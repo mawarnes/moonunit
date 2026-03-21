@@ -36,12 +36,9 @@ void setup() {
     loadConfig();
 
     Serial.println("=== Metron View Telemetry Unit ===");
-    Serial.printf("Unit ID  : %d
-", UNIT_ID);
-    Serial.printf("Interval : %lu ms
-", cfg.intervalMs);
-    Serial.printf("Endpoint : %s
-", cfg.endpoint);
+    Serial.printf("Unit ID  : %d\n", UNIT_ID);
+    Serial.printf("Interval : %lu ms\n", cfg.intervalMs);
+    Serial.printf("Endpoint : %s\n", cfg.endpoint);
 
     SerialAT.begin(115200, SERIAL_8N1, MODEM_RX, MODEM_TX);
     delay(3000);
