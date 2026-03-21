@@ -1,5 +1,5 @@
 /*
- * Metron View ESP32 Telemetry Unit
+ * Metron View ESP32 Telemetry Unit — "Moon Unit"
  *
  * GPS + SIM800L cellular telemetry with remote configuration.
  * Config is returned by the API on each successful send and persisted
@@ -12,11 +12,14 @@
  *   4-20mA Ch1     : GPIO34 via 165Ω shunt resistor to GND
  *   4-20mA Ch2     : GPIO35 via 165Ω shunt resistor to GND
  *
+ * Libraries required (install via Tools → Manage Libraries):
+ *   - TinyGPSPlus by Mikal Hart
+ *   - ArduinoJson by Benoit Blanchon
+ *
  * NOTE: SIM800L does not support HTTPS. Ensure the Azure Function App
  * has "HTTPS Only" disabled, or place a reverse proxy in front.
  */
 
-#include <Arduino.h>
 #include <HardwareSerial.h>
 #include <TinyGPS++.h>
 #include <Preferences.h>
@@ -29,7 +32,7 @@ HardwareSerial gpsSerial(2);  // GPS on UART2
 TinyGPSPlus gps;
 Preferences prefs;
 
-// ── Capabilities ── fields this firmware can provide ──────────────────────
+// ── Capabilities — fields this firmware can provide ───────────────────────
 static const char* CAPABILITIES[] = {
     "latitude", "longitude", "altitude", "speed",
     "course", "satellites", "hdop", "rssi", "battery_voltage"
@@ -49,15 +52,15 @@ struct AnalogChannel {
 struct DeviceConfig {
     unsigned long intervalMs = DEFAULT_INTERVAL_MS;
     char          endpoint[200] = {};
-    bool          fields[9]     = {};   // indexed by CAPABILITIES order
+    bool          fields[9]     = {};
     AnalogChannel analog[2];
 } cfg;
 
 // ── State ──────────────────────────────────────────────────────────────────
-unsigned long lastSend     = 0;
-int           msgCounter   = 0;
-bool          netReady     = false;
-int           failCount    = 0;
+unsigned long lastSend   = 0;
+int           msgCounter = 0;
+bool          netReady   = false;
+int           failCount  = 0;
 
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -127,12 +130,10 @@ void applyJsonConfig(JsonObject obj) {
 }
 
 void loadConfig() {
-    // Build default endpoint from UNIT_ID
     snprintf(cfg.endpoint, sizeof(cfg.endpoint),
              "/api/ingest/sensorlogger/%d", UNIT_ID);
-    // Default: send lat + lng
-    cfg.fields[0] = true;
-    cfg.fields[1] = true;
+    cfg.fields[0] = true;  // latitude
+    cfg.fields[1] = true;  // longitude
 
     prefs.begin("devconfig", true);
     String json = prefs.getString("cfg", "");
@@ -150,7 +151,7 @@ void loadConfig() {
     }
 
     applyJsonConfig(doc.as<JsonObject>());
-    Serial.printf("[cfg] Loaded from NVS — interval=%lums endpoint=%s\n",
+    Serial.printf("[cfg] Loaded — interval=%lums endpoint=%s\n",
                   cfg.intervalMs, cfg.endpoint);
 }
 
@@ -243,7 +244,6 @@ void handleResponse(const String& raw) {
 
     failCount = 0;
 
-    // Extract body after blank line
     int bodyIdx = raw.indexOf("\r\n\r\n");
     if (bodyIdx < 0) return;
     String body = raw.substring(bodyIdx + 4);
@@ -268,7 +268,6 @@ void sendTelemetry() {
         return;
     }
 
-    // Build JSON payload
     JsonDocument doc;
     doc["messageId"] = msgCounter++;
     doc["sessionId"] = DEVICE_SESSION;
@@ -292,7 +291,6 @@ void sendTelemetry() {
     addField("satellites", (double)gps.satellites.value());
     addField("hdop",       gps.hdop.hdop());
 
-    // 4-20 mA analog channels
     for (int i = 0; i < 2; i++) {
         AnalogChannel& ch = cfg.analog[i];
         if (ch.enabled && strlen(ch.name) > 0) {
@@ -311,15 +309,13 @@ void sendTelemetry() {
     String json;
     serializeJson(doc, json);
 
-    String path = String(cfg.endpoint);
-    String req  = "POST " + path + " HTTP/1.1\r\n";
+    String req = "POST " + String(cfg.endpoint) + " HTTP/1.1\r\n";
     req += "Host: " + String(API_HOST) + "\r\n";
     req += "Content-Type: application/json\r\n";
     req += "Content-Length: " + String(json.length()) + "\r\n";
     req += "Connection: close\r\n\r\n";
     req += json;
 
-    // Open TCP connection
     String cipCmd  = "AT+CIPSTART=\"TCP\",\"" + String(API_HOST) + "\"," + String(API_PORT);
     String cipResp = atCmdCapture(cipCmd, 10000);
 
@@ -330,7 +326,7 @@ void sendTelemetry() {
         if (cipResp.indexOf("ERROR") >= 0) {
             Serial.println("[gsm] Retry failed");
             if (++failCount >= 5) {
-                Serial.println("[gsm] Too many failures — restarting modem");
+                Serial.println("[gsm] Too many failures — resetting modem");
                 digitalWrite(MODEM_RST, LOW); delay(100); digitalWrite(MODEM_RST, HIGH);
                 delay(5000);
                 atCmd("AT", 1000);
@@ -388,7 +384,6 @@ void setup() {
     SerialAT.begin(115200, SERIAL_8N1, MODEM_RX, MODEM_TX);
     delay(3000);
 
-    // Reset modem
     digitalWrite(MODEM_RST, LOW);  delay(100);
     digitalWrite(MODEM_RST, HIGH); delay(3000);
 
@@ -403,17 +398,14 @@ void setup() {
 }
 
 void loop() {
-    // Feed GPS parser
     while (gpsSerial.available())
         gps.encode(gpsSerial.read());
 
-    // Send on interval
     if (netReady && (millis() - lastSend >= cfg.intervalMs)) {
         sendTelemetry();
         lastSend = millis();
     }
 
-    // Serial passthrough for AT debugging
     if (SerialAT.available()) Serial.write(SerialAT.read());
     if (Serial.available())   SerialAT.write(Serial.read());
 }

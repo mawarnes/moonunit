@@ -22,19 +22,26 @@ GPS + SIM800L cellular telemetry with remote configuration via the Metron View A
 
 ## Setup
 
-### 1. Install VS Code + PlatformIO
+### 1. Install Arduino IDE and ESP32 support
 
-1. Install [VS Code](https://code.visualstudio.com/)
-2. Open the Extensions panel and install **PlatformIO IDE**
-3. Restart VS Code
+1. Install [Arduino IDE 2](https://www.arduino.cc/en/software)
+2. Go to **File → Preferences** and add this to *Additional boards manager URLs*:
+   `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json`
+3. Go to **Tools → Board → Boards Manager**, search `esp32`, install **esp32 by Espressif**
 
-### 2. Open the project
+### 2. Install libraries
 
-Open the `esp32-telemetry-firmware` folder in VS Code. PlatformIO will automatically install the ESP32 platform and libraries defined in `platformio.ini` on first build.
+Go to **Tools → Manage Libraries** and install:
+- **TinyGPSPlus** by Mikal Hart
+- **ArduinoJson** by Benoit Blanchon
 
-### 3. Configure for your unit
+### 3. Open the sketch
 
-Edit `include/config.h`:
+Open `moonunit.ino` in Arduino IDE. Both `moonunit.ino` and `config.h` must be in the same folder.
+
+### 4. Configure for your unit
+
+Edit `config.h`:
 
 ```c
 #define APN         "internet"   // your SIM's APN
@@ -42,13 +49,13 @@ Edit `include/config.h`:
 #define DEVICE_ID   "unit-2"     // human-readable device name
 ```
 
-### 4. Build and flash
+### 5. Build and flash
 
-- **Build:** click the ✓ (tick) button in the PlatformIO toolbar, or run `pio run`
-- **Flash:** connect the board via USB (disconnect GPS first), click → (arrow) button, or run `pio run --target upload`
-- **Serial monitor:** click the plug icon, or run `pio device monitor`
-
-> Disconnect the GPS module before flashing, then reconnect after upload.
+- Select **Tools → Board → esp32 → ESP32 Dev Module**
+- Select the correct port under **Tools → Port**
+- Disconnect the GPS module, then click **Upload** (→)
+- Reconnect the GPS after flashing
+- Open **Tools → Serial Monitor** at **115200 baud** to see output
 
 ## CI/CD
 

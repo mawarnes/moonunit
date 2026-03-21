@@ -16,32 +16,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Cache PlatformIO
-        uses: actions/cache@v4
-        with:
-          path: ~/.platformio/.cache
-          key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini') }}
+      - name: Install arduino-cli
+        uses: arduino/setup-arduino-cli@v2
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+      - name: Install ESP32 platform
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
 
-      - name: Install PlatformIO
-        run: pip install --upgrade platformio
+      - name: Install libraries
+        run: |
+          arduino-cli lib install "TinyGPSPlus"
+          arduino-cli lib install "ArduinoJson"
 
       - name: Build firmware
-        run: pio run
+        run: arduino-cli compile --fqbn esp32:esp32:esp32 moonunit.ino --output-dir build/
 
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
           name: firmware-${{ github.sha }}
-          path: .pio/build/esp32dev/firmware.bin
+          path: build/moonunit.ino.bin
           retention-days: 30
 
       - name: Attach firmware to GitHub Release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: .pio/build/esp32dev/firmware.bin
+          files: build/moonunit.ino.bin
