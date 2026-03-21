@@ -36,20 +36,23 @@ void setup() {
     loadConfig();
 
     Serial.println("=== Metron View Telemetry Unit ===");
-    Serial.printf("Unit ID  : %d\n", UNIT_ID);
-    Serial.printf("Interval : %lu ms\n", cfg.intervalMs);
-    Serial.printf("Endpoint : %s\n", cfg.endpoint);
+    Serial.printf("Unit ID       : %d\n", UNIT_ID);
+    Serial.printf("Interval      : %lu ms\n", cfg.intervalMs);
+    Serial.printf("Endpoint      : %s\n", cfg.endpoint);
+    Serial.printf("Connectivity  : %s\n", cfg.connectivityType);
 
-    SerialAT.begin(115200, SERIAL_8N1, MODEM_RX, MODEM_TX);
-    delay(3000);
+    // Only power up the modem if GSM is the active transport
+    if (strcmp(cfg.connectivityType, "gsm") == 0) {
+        SerialAT.begin(115200, SERIAL_8N1, MODEM_RX, MODEM_TX);
+        delay(3000);
+        digitalWrite(MODEM_RST, LOW);  delay(100);
+        digitalWrite(MODEM_RST, HIGH); delay(3000);
+    } else {
+        // Keep modem powered off
+        digitalWrite(MODEM_POWER_ON, LOW);
+    }
 
-    digitalWrite(MODEM_RST, LOW);  delay(100);
-    digitalWrite(MODEM_RST, HIGH); delay(3000);
-
-    atCmd("AT", 1000);
-    waitForNetwork();
-
-    if (setupInternet()) {
+    if (initConnectivity()) {
         netReady = true;
         sendTelemetry();
         lastSend = millis();

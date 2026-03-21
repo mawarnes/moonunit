@@ -18,10 +18,13 @@ struct AnalogChannel {
 };
 
 struct DeviceConfig {
-    unsigned long intervalMs    = DEFAULT_INTERVAL_MS;
-    char          endpoint[200] = {};
-    bool          fields[9]     = {};   // indexed by CAPABILITIES order
+    unsigned long intervalMs         = DEFAULT_INTERVAL_MS;
+    char          endpoint[200]      = {};
+    bool          fields[9]          = {};   // indexed by CAPABILITIES order
     AnalogChannel analog[2];
+    char          connectivityType[8] = "gsm"; // "gsm", "wifi", "none"
+    char          wifiSsid[64]        = {};
+    char          wifiPassword[64]    = {};
 };
 
 extern DeviceConfig cfg;

@@ -38,6 +38,16 @@ void applyJsonConfig(JsonObject obj) {
         }
     }
 
+    JsonObject conn = obj["connectivity"];
+    if (!conn.isNull()) {
+        const char* type = conn["type"];
+        if (type) strlcpy(cfg.connectivityType, type, sizeof(cfg.connectivityType));
+        const char* ssid = conn["wifiSsid"];
+        if (ssid) strlcpy(cfg.wifiSsid, ssid, sizeof(cfg.wifiSsid));
+        const char* pass = conn["wifiPassword"];
+        if (pass) strlcpy(cfg.wifiPassword, pass, sizeof(cfg.wifiPassword));
+    }
+
     JsonArray analog = obj["analogSensors"];
     if (analog) {
         for (JsonObject ch : analog) {
@@ -60,6 +70,7 @@ void loadConfig() {
              "/api/ingest/sensorlogger/%d", UNIT_ID);
     cfg.fields[0] = true;  // latitude
     cfg.fields[1] = true;  // longitude
+    strlcpy(cfg.connectivityType, "gsm", sizeof(cfg.connectivityType));
 
     prefs.begin("devconfig", true);
     String json = prefs.getString("cfg", "");
