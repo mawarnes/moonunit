@@ -30,7 +30,7 @@ jobs:
           arduino-cli lib install "ArduinoJson"
 
       - name: Build firmware
-        run: arduino-cli compile --fqbn esp32:esp32:esp32 moonunit.ino --output-dir build/
+        run: arduino-cli compile --fqbn esp32:esp32:esp32 moonunit/moonunit.ino --output-dir build/
 
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
