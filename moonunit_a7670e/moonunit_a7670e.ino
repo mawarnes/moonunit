@@ -14,6 +14,8 @@
  *   - ArduinoJson by Benoit Blanchon
  */
 
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 #include "DeviceConfig.h"
 #include "AtClient.h"
 #include "GpsHandler.h"
@@ -25,6 +27,7 @@ static unsigned long lastGpsPoll = 0;
 static bool          netReady    = false;
 
 void setup() {
+    WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);  // LTE registration draws surge current — disable brownout
     Serial.begin(115200);
 
     pinMode(MODEM_PWKEY,    OUTPUT);
@@ -45,10 +48,16 @@ void setup() {
 
     if (strcmp(cfg.connectivityType, "gsm") == 0) {
         SerialAT.begin(115200, SERIAL_8N1, MODEM_RX, MODEM_TX);
-        delay(500);
+        // Wait for any auto-start boot to COMPLETE before sending PWRKEY.
+        // After a USB replug the modem auto-starts; a 1.5 s PWRKEY mid-boot disrupts it.
+        // After a code-deploy reset the modem is briefly off and needs PWRKEY to start.
+        // If we wait until after any auto-boot has finished, the 1.5 s PWRKEY is either:
+        //   - ignored (modem already running — needs >3 s to power off), or
+        //   - starts the modem (it never auto-started after the brief power cut)
+        delay(12000);
         digitalWrite(MODEM_PWKEY, HIGH); delay(1500);
         digitalWrite(MODEM_PWKEY, LOW);
-        delay(5000);
+        delay(5000); // extra wait if modem needed booting from PWRKEY
     } else {
         digitalWrite(MODEM_POWER_ON, LOW);
     }
