@@ -14,6 +14,12 @@ int failCount  = 0;
 // ── Connectivity init ──────────────────────────────────────────────────────
 
 bool initConnectivity() {
+    // Keep WiFi radio off when using GSM — it can interfere with SIM800L
+    if (strcmp(cfg.connectivityType, "gsm") == 0 || strcmp(cfg.connectivityType, "none") == 0) {
+        WiFi.mode(WIFI_OFF);
+        btStop();
+    }
+
     if (strcmp(cfg.connectivityType, "wifi") == 0) {
         if (strlen(cfg.wifiSsid) == 0) {
             Serial.println("[wifi] No SSID configured");
@@ -48,6 +54,11 @@ void disconnectWifi() {
 }
 
 void handleResponse(const String& raw) {
+    // Print first line of HTTP response for debugging
+    int firstLine = raw.indexOf("\r\n");
+    if (firstLine > 0)
+        Serial.printf("[http] %s\n", raw.substring(0, firstLine).c_str());
+
     if (raw.indexOf("200 OK") < 0) {
         Serial.println("[http] Non-200 response");
         failCount++;
@@ -146,8 +157,8 @@ static void sendViaGsm(const String& json) {
         }
     }
 
-    delay(2000);
-    atCmd("AT+CIPSEND=" + String(req.length()), 2000);
+    delay(4000);
+    atCmd("AT+CIPSEND=" + String(req.length()), 3000);
     delay(1000);
     SerialAT.print(req);
 

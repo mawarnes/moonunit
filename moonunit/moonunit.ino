@@ -60,6 +60,18 @@ void setup() {
 }
 
 void loop() {
+
+    // Temporary GPS debug — add to loop()
+    static unsigned long lastGpsPrint = 0;
+    if (millis() - lastGpsPrint > 5000) {
+        Serial.printf("[gps] Chars=%lu Sentences=%lu Fix=%s Sats=%d\n",
+            gps.charsProcessed(),
+            gps.sentencesWithFix(),
+            gps.location.isValid() ? "YES" : "NO",
+            gps.satellites.value());
+        lastGpsPrint = millis();
+    }
+
     while (gpsSerial.available())
         gps.encode(gpsSerial.read());
 

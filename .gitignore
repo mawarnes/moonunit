@@ -1,1 +1,14 @@
+# PlatformIO
 .pio/
+
+# Arduino build output
+build/
+*.bin
+*.elf
+*.map
+
+# Screen session logs
+screenlog.*
+
+# macOS
+.DS_Store

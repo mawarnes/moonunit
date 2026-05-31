@@ -38,6 +38,8 @@ void waitForNetwork() {
         while (millis() - t < 3000) {
             if (SerialAT.available()) r += (char)SerialAT.read();
         }
+        r.trim();
+        Serial.printf("[gsm] CREG response: %s\n", r.c_str());
         if (r.indexOf("+CREG: 0,1") >= 0 || r.indexOf("+CREG: 0,5") >= 0 ||
             r.indexOf("+CREG:0,1")  >= 0 || r.indexOf("+CREG:0,5")  >= 0) {
             Serial.println("[gsm] Network registered");
