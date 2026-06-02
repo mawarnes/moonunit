@@ -73,6 +73,11 @@ static String buildPayload() {
     doc["deviceId"]  = DEVICE_ID;
     JsonArray payload = doc["payload"].to<JsonArray>();
 
+    // Always include GNSS status so the device can check in even before a fix,
+    // allowing the server to respond with field config and track fix acquisition.
+    { JsonObject o = payload.add<JsonObject>(); o["name"] = "gnssValid";   o["time"] = 0; o["value"] = gnss.valid ? 1.0 : 0.0; }
+    { JsonObject o = payload.add<JsonObject>(); o["name"] = "satellites";  o["time"] = 0; o["value"] = (double)gnss.satellites; }
+
     auto addField = [&](const char* name, double value) {
         if (isFieldEnabled(name)) {
             JsonObject item = payload.add<JsonObject>();
@@ -82,13 +87,14 @@ static String buildPayload() {
         }
     };
 
-    addField("latitude",   gnss.latitude);
-    addField("longitude",  gnss.longitude);
-    addField("altitude",   gnss.altitude);
-    addField("speed",      gnss.speed);
-    addField("course",     gnss.course);
-    addField("satellites", (double)gnss.satellites);
-    addField("hdop",       gnss.hdop);
+    if (gnss.valid) {
+        addField("latitude",  gnss.latitude);
+        addField("longitude", gnss.longitude);
+        addField("altitude",  gnss.altitude);
+        addField("speed",     gnss.speed);
+        addField("course",    gnss.course);
+        addField("hdop",      gnss.hdop);
+    }
 
     for (int i = 0; i < 2; i++) {
         AnalogChannel& ch = cfg.analog[i];
@@ -100,8 +106,6 @@ static String buildPayload() {
         }
     }
 
-    if (payload.size() == 0) return "";
-
     String json;
     serializeJson(doc, json);
     return json;
@@ -110,6 +114,8 @@ static String buildPayload() {
 static void sendViaGsm(const String& json) {
     // A7670E built-in HTTP client — handles TLS natively when URL starts with https://
     String url = "https://" + String(API_HOST) + String(cfg.endpoint);
+    Serial.printf("[gsm] POST %s\n", url.c_str());
+    Serial.printf("[gsm] Body: %s\n", json.c_str());
 
     atCmd("AT+HTTPTERM", 1000);  // clean up any previous session
     atCmd("AT+HTTPINIT", 2000);
@@ -150,7 +156,9 @@ static void sendViaGsm(const String& json) {
         String readResp = atCmdCapture("AT+HTTPREAD=0," + String(bodyLen), 5000);
         // Response format: +HTTPREAD: 0,<len>\r\n<data>\r\nOK
         int bodyStart = readResp.indexOf("\r\n", readResp.indexOf("+HTTPREAD:")) + 2;
-        handleJsonBody(readResp.substring(bodyStart));
+        String responseBody = readResp.substring(bodyStart);
+        Serial.printf("[gsm] Response: %s\n", responseBody.c_str());
+        handleJsonBody(responseBody);
         failCount = 0;
     } else if (statusCode != 200) {
         if (++failCount >= 5) {
@@ -184,6 +192,8 @@ static void sendViaWifi(const String& json) {
     }
 
     String url = "https://" + String(API_HOST) + String(cfg.endpoint);
+    Serial.printf("[wifi] POST %s\n", url.c_str());
+    Serial.printf("[wifi] Body: %s\n", json.c_str());
     WiFiClientSecure client;
     client.setInsecure();  // Azure uses a well-known CA; set a root cert here if stricter validation is needed
     HTTPClient http;
@@ -192,7 +202,9 @@ static void sendViaWifi(const String& json) {
     int code = http.POST(json);
 
     if (code == 200) {
-        handleJsonBody(http.getString());
+        String responseBody = http.getString();
+        Serial.printf("[wifi] Response: %s\n", responseBody.c_str());
+        handleJsonBody(responseBody);
         failCount = 0;
         Serial.println("[wifi] Sent successfully");
     } else {
@@ -205,11 +217,6 @@ static void sendViaWifi(const String& json) {
 void sendTelemetry() {
     if (strcmp(cfg.connectivityType, "none") == 0) {
         Serial.println("[send] Connectivity is none, skipping");
-        return;
-    }
-
-    if (!gnss.valid) {
-        Serial.println("[gps] No fix, skipping send");
         return;
     }
 

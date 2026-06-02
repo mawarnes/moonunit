@@ -22,9 +22,8 @@
 #include "Telemetry.h"
 #include "config.h"
 
-static unsigned long lastSend    = 0;
-static unsigned long lastGpsPoll = 0;
-static bool          netReady    = false;
+static unsigned long lastSend = 0;
+static bool          netReady = false;
 
 void setup() {
     WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);  // LTE registration draws surge current — disable brownout
@@ -40,11 +39,34 @@ void setup() {
 
     loadConfig();
 
-    Serial.println("=== Metron View Telemetry Unit (A7670E) ===");
-    Serial.printf("Unit ID      : %d\n",  UNIT_ID);
+    Serial.println("\n========================================");
+    Serial.println(" Metron View Telemetry Unit (A7670E)");
+    Serial.println("========================================");
+    Serial.printf("Unit ID      : %d\n",    UNIT_ID);
+    Serial.printf("Device ID    : %s\n",    DEVICE_ID);
+    Serial.printf("Session      : %s\n",    DEVICE_SESSION);
+    Serial.println("--- Network ---");
+    Serial.printf("Connectivity : %s\n",    cfg.connectivityType);
+    if (strcmp(cfg.connectivityType, "gsm") == 0)
+        Serial.printf("APN          : %s\n", APN);
+    if (strcmp(cfg.connectivityType, "wifi") == 0)
+        Serial.printf("WiFi SSID    : %s\n", cfg.wifiSsid);
+    Serial.println("--- Telemetry ---");
+    Serial.printf("Endpoint     : %s\n",    cfg.endpoint);
     Serial.printf("Interval     : %lu ms\n", cfg.intervalMs);
-    Serial.printf("Endpoint     : %s\n",  cfg.endpoint);
-    Serial.printf("Connectivity : %s\n",  cfg.connectivityType);
+    Serial.println("--- Enabled Fields ---");
+    for (int i = 0; i < CAP_COUNT; i++)
+        Serial.printf("  %-20s %s\n", CAPABILITIES[i], cfg.fields[i] ? "ON" : "off");
+    Serial.println("--- Analog Channels ---");
+    for (int i = 0; i < 2; i++) {
+        AnalogChannel& ch = cfg.analog[i];
+        if (ch.enabled)
+            Serial.printf("  Ch%d: %-16s %.1f-%.1f (pin %d)\n",
+                i + 1, ch.name, ch.rangeMin, ch.rangeMax, ch.pin);
+        else
+            Serial.printf("  Ch%d: disabled\n", i + 1);
+    }
+    Serial.println("========================================");
 
     if (strcmp(cfg.connectivityType, "gsm") == 0) {
         SerialAT.begin(115200, SERIAL_8N1, MODEM_RX, MODEM_TX);
@@ -71,16 +93,11 @@ void setup() {
 }
 
 void loop() {
-    // Poll GNSS every 5 s
-    if (millis() - lastGpsPoll > 5000) {
+    if (netReady && (millis() - lastSend >= cfg.intervalMs)) {
         pollGnss();
         Serial.printf("[gnss] Fix=%s Sats=%d Lat=%.6f Lon=%.6f\n",
             gnss.valid ? "YES" : "NO",
             gnss.satellites, gnss.latitude, gnss.longitude);
-        lastGpsPoll = millis();
-    }
-
-    if (netReady && (millis() - lastSend >= cfg.intervalMs)) {
         sendTelemetry();
         lastSend = millis();
     }
