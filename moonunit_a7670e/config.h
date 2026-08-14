@@ -30,3 +30,14 @@
 
 // --- Defaults (overridden by server config after first successful send) ---
 #define DEFAULT_INTERVAL_MS  60000UL  // 60 seconds
+
+// --- Debug logging ---
+// When true, prints raw AT command/response traffic and enables Serial<->modem passthrough.
+#define MODEM_TRAFFIC_DEBUG  false
+
+// --- Battery voltage source ---
+// If enabled, battery_voltage is read from BAT_ADC_PIN and scaled by BAT_ADC_DIVIDER.
+#define USE_ADC_BATTERY_VOLTAGE 1
+#define BAT_ADC_PIN             35
+#define BAT_ADC_DIVIDER         2.0f
+

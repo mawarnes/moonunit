@@ -5,7 +5,7 @@
 // ── Globals ────────────────────────────────────────────────────────────────
 const char* CAPABILITIES[] = {
     "latitude", "longitude", "altitude", "speed",
-    "course", "satellites", "hdop", "rssi", "battery_voltage"
+    "course", "satellites", "hdop", "rssi", "battery_voltage", "battery_charge", "battery_charge_state", "temperature"
 };
 const int CAP_COUNT = sizeof(CAPABILITIES) / sizeof(CAPABILITIES[0]);
 
@@ -81,6 +81,8 @@ void loadConfig() {
         return;
     }
 
+    Serial.printf("[cfg] Retrieved JSON: %s\n", json.c_str());
+
     JsonDocument doc;
     if (deserializeJson(doc, json) != DeserializationError::Ok) {
         Serial.println("[cfg] Parse error, using defaults");
@@ -88,8 +90,12 @@ void loadConfig() {
     }
 
     applyJsonConfig(doc.as<JsonObject>());
-    Serial.printf("[cfg] Loaded — interval=%lums endpoint=%s\n",
-                  cfg.intervalMs, cfg.endpoint);
+    Serial.printf("[cfg] Loaded — interval=%lums endpoint=%s connectivity=%s\n",
+                  cfg.intervalMs, cfg.endpoint, cfg.connectivityType);
+    Serial.println("[cfg] Enabled fields:");
+    for (int i = 0; i < CAP_COUNT; i++) {
+        if (cfg.fields[i]) Serial.printf("  - %s\n", CAPABILITIES[i]);
+    }
 }
 
 void saveConfig(JsonObject obj) {

@@ -102,6 +102,8 @@ void loop() {
         lastSend = millis();
     }
 
-    if (SerialAT.available()) Serial.write(SerialAT.read());
-    if (Serial.available())   SerialAT.write(Serial.read());
+    if (MODEM_TRAFFIC_DEBUG) {
+        if (SerialAT.available()) Serial.write(SerialAT.read());
+        if (Serial.available())   SerialAT.write(Serial.read());
+    }
 }

@@ -5,17 +5,26 @@
 HardwareSerial SerialAT(1);  // UART1
 
 void atCmd(const String& cmd, int timeout) {
-    Serial.print(">> "); Serial.println(cmd);
+    if (MODEM_TRAFFIC_DEBUG) {
+        Serial.print(">> ");
+        Serial.println(cmd);
+    }
     SerialAT.println(cmd);
     unsigned long t = millis();
     while (millis() - t < (unsigned long)timeout) {
-        if (SerialAT.available()) Serial.write(SerialAT.read());
+        if (SerialAT.available()) {
+            char c = (char)SerialAT.read();
+            if (MODEM_TRAFFIC_DEBUG) Serial.write(c);
+        }
     }
-    Serial.println();
+    if (MODEM_TRAFFIC_DEBUG) Serial.println();
 }
 
 String atCmdCapture(const String& cmd, int timeout) {
-    Serial.print(">> "); Serial.println(cmd);
+    if (MODEM_TRAFFIC_DEBUG) {
+        Serial.print(">> ");
+        Serial.println(cmd);
+    }
     SerialAT.println(cmd);
     String resp;
     unsigned long t = millis();
@@ -23,10 +32,10 @@ String atCmdCapture(const String& cmd, int timeout) {
         if (SerialAT.available()) {
             char c = SerialAT.read();
             resp += c;
-            Serial.write(c);
+            if (MODEM_TRAFFIC_DEBUG) Serial.write(c);
         }
     }
-    Serial.println();
+    if (MODEM_TRAFFIC_DEBUG) Serial.println();
     return resp;
 }
 

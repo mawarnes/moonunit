@@ -6,6 +6,7 @@
 // ── Capabilities — fields this firmware can provide ───────────────────────
 extern const char* CAPABILITIES[];
 extern const int   CAP_COUNT;
+constexpr int      MAX_CAPABILITIES = 12;
 
 // ── Config structs ─────────────────────────────────────────────────────────
 struct AnalogChannel {
@@ -20,7 +21,7 @@ struct AnalogChannel {
 struct DeviceConfig {
     unsigned long intervalMs         = DEFAULT_INTERVAL_MS;
     char          endpoint[200]      = {};
-    bool          fields[9]          = {};   // indexed by CAPABILITIES order
+    bool          fields[MAX_CAPABILITIES] = {};   // indexed by CAPABILITIES order
     AnalogChannel analog[2];
     char          connectivityType[8] = "gsm"; // "gsm", "wifi", "none"
     char          wifiSsid[64]        = {};

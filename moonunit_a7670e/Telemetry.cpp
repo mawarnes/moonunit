@@ -56,6 +56,7 @@ void disconnectWifi() {
 
 // Apply a JSON body returned by the server (shared by both transports)
 static void handleJsonBody(const String& body) {
+    Serial.printf("[cfg] handleJsonBody raw: %s\n", body.c_str());
     JsonDocument doc;
     if (deserializeJson(doc, body) != DeserializationError::Ok) return;
     JsonObject configObj = doc["config"];
@@ -63,6 +64,93 @@ static void handleJsonBody(const String& body) {
     applyJsonConfig(configObj);
     saveConfig(configObj);
     Serial.printf("[cfg] Updated from server — interval=%lums\n", cfg.intervalMs);
+}
+
+static bool readModemTemperatureC(double& tempC) {
+    // SIMCom modules typically return: +CPMUTEMP: <tempC>
+    String resp = atCmdCapture("AT+CPMUTEMP", 2000);
+    int idx = resp.indexOf("+CPMUTEMP:");
+    if (idx < 0) return false;
+
+    String tail = resp.substring(idx + 10);
+    tail.trim();
+
+    int end = 0;
+    while (end < (int)tail.length()) {
+        char c = tail[end];
+        if ((c >= '0' && c <= '9') || c == '-' || c == '+' || c == '.') {
+            end++;
+            continue;
+        }
+        break;
+    }
+    if (end == 0) return false;
+
+    double t = tail.substring(0, end).toDouble();
+    if (!isnan(t) && t > -100.0 && t < 150.0) {
+        tempC = t;
+        return true;
+    }
+    return false;
+}
+
+static bool readModemBattery(double& chargeState, double& chargePct, double& voltageV) {
+    // SIMCom modules typically return: +CBC: <bcs>,<bcl>,<mV>
+    String resp = atCmdCapture("AT+CBC", 2000);
+    int idx = resp.indexOf("+CBC:");
+    if (idx < 0) return false;
+
+    String line = resp.substring(idx + 5);
+    line.trim();
+
+    int c1 = line.indexOf(',');
+    int c2 = line.indexOf(',', c1 + 1);
+    if (c1 < 0 || c2 < 0) return false;
+
+    int bcs = line.substring(0, c1).toInt();
+    int bcl = line.substring(c1 + 1, c2).toInt();
+    int mV  = line.substring(c2 + 1).toInt();
+    if (bcs < 0 || bcs > 2 || bcl < 0 || bcl > 100 || mV < 2500 || mV > 5000) return false;
+
+    chargeState = (double)bcs;
+    chargePct = (double)bcl;
+    voltageV  = (double)mV / 1000.0;
+    return true;
+}
+
+static bool readBatteryVoltageAdcV(double& voltageV) {
+#if USE_ADC_BATTERY_VOLTAGE
+    static bool adcConfigured = false;
+    if (!adcConfigured) {
+        analogSetPinAttenuation(BAT_ADC_PIN, ADC_11db);
+        adcConfigured = true;
+    }
+
+    // Hard guard: never sample battery ADC on a pin currently used by an enabled analog channel.
+    static bool conflictWarned = false;
+    for (int i = 0; i < 2; i++) {
+        if (cfg.analog[i].enabled && cfg.analog[i].pin == BAT_ADC_PIN) {
+            if (!conflictWarned) {
+                Serial.printf("[telemetry] battery voltage ADC disabled: BAT_ADC_PIN (%d) overlaps analog sensor Ch%d\n", BAT_ADC_PIN, i + 1);
+                conflictWarned = true;
+            }
+            return false;
+        }
+    }
+    conflictWarned = false;
+
+    uint32_t rawMv = analogReadMilliVolts(BAT_ADC_PIN);
+    if (rawMv == 0) return false;
+
+    double v = ((double)rawMv / 1000.0) * (double)BAT_ADC_DIVIDER;
+    if (v < 2.5 || v > 5.2) return false;
+
+    voltageV = v;
+    return true;
+#else
+    (void)voltageV;
+    return false;
+#endif
 }
 
 // Build the JSON payload string
@@ -87,13 +175,75 @@ static String buildPayload() {
         }
     };
 
+    bool wantLatitude  = isFieldEnabled("latitude");
+    bool wantLongitude = isFieldEnabled("longitude");
+
     if (gnss.valid) {
+        if (wantLatitude && wantLongitude) {
+            Serial.printf("[telemetry] GNSS read ok: lat=%.6f lon=%.6f\n", gnss.latitude, gnss.longitude);
+        } else if (wantLatitude) {
+            Serial.printf("[telemetry] GNSS read ok: lat=%.6f (longitude disabled)\n", gnss.latitude);
+        } else if (wantLongitude) {
+            Serial.printf("[telemetry] GNSS read ok: lon=%.6f (latitude disabled)\n", gnss.longitude);
+        }
         addField("latitude",  gnss.latitude);
         addField("longitude", gnss.longitude);
         addField("altitude",  gnss.altitude);
         addField("speed",     gnss.speed);
         addField("course",    gnss.course);
         addField("hdop",      gnss.hdop);
+    } else if (wantLatitude || wantLongitude) {
+        Serial.println("[telemetry] GNSS read failed: no valid fix for latitude/longitude");
+    }
+
+    bool isGsm = (strcmp(cfg.connectivityType, "gsm") == 0);
+
+    bool wantTemperature = isFieldEnabled("temperature");
+    if (isGsm && wantTemperature) {
+        double modemTempC = 0.0;
+        if (readModemTemperatureC(modemTempC)) {
+            Serial.printf("[telemetry] modem temperature read ok: %.2fC\n", modemTempC);
+            addField("temperature", modemTempC);
+        } else {
+            Serial.println("[telemetry] modem temperature read failed");
+        }
+    }
+
+    bool wantBatteryChargeState = isFieldEnabled("battery_charge_state");
+    bool wantBatteryCharge      = isFieldEnabled("battery_charge");
+    bool wantBatteryVoltage     = isFieldEnabled("battery_voltage");
+
+    double batteryVoltageV = 0.0;
+    bool   haveBatteryVoltage = false;
+    if (wantBatteryVoltage) {
+        if (readBatteryVoltageAdcV(batteryVoltageV)) {
+            haveBatteryVoltage = true;
+            Serial.printf("[telemetry] battery voltage (ADC) ok: %.3fV\n", batteryVoltageV);
+            addField("battery_voltage", batteryVoltageV);
+        } else {
+            Serial.println("[telemetry] battery voltage (ADC) failed");
+        }
+    }
+
+    bool needModemBattery = isGsm &&
+        (wantBatteryChargeState || wantBatteryCharge || (wantBatteryVoltage && !haveBatteryVoltage));
+
+    if (needModemBattery) {
+        double batteryChargeState = 0.0;
+        double batteryChargePct   = 0.0;
+        double modemBatteryVoltageV = 0.0;
+        if (readModemBattery(batteryChargeState, batteryChargePct, modemBatteryVoltageV)) {
+            Serial.printf("[telemetry] modem battery read ok: state=%.0f charge=%.0f%% voltage=%.3fV\n",
+                          batteryChargeState, batteryChargePct, modemBatteryVoltageV);
+            if (wantBatteryChargeState) addField("battery_charge_state", batteryChargeState);
+            if (wantBatteryCharge) addField("battery_charge", batteryChargePct);
+            if (wantBatteryVoltage && !haveBatteryVoltage) {
+                addField("battery_voltage", modemBatteryVoltageV);
+                Serial.printf("[telemetry] battery voltage fallback (modem): %.3fV\n", modemBatteryVoltageV);
+            }
+        } else {
+            Serial.println("[telemetry] modem battery read failed");
+        }
     }
 
     for (int i = 0; i < 2; i++) {
