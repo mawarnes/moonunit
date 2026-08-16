@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Arduino.h>
 #include <ArduinoJson.h>
 #include "config.h"
 
@@ -20,6 +21,7 @@ struct AnalogChannel {
 
 struct DeviceConfig {
     unsigned long intervalMs         = DEFAULT_INTERVAL_MS;
+    char          apiHost[128]       = {};
     char          endpoint[200]      = {};
     bool          fields[MAX_CAPABILITIES] = {};   // indexed by CAPABILITIES order
     AnalogChannel analog[2];
@@ -34,3 +36,15 @@ extern DeviceConfig cfg;
 void applyJsonConfig(JsonObject obj);
 void loadConfig();
 void saveConfig(JsonObject obj);
+
+// Runtime identity/provisioning (stored in NVS namespace: "provision")
+void        loadProvisioning();
+const char* getRuntimeSerialNumber();
+const char* getRuntimeSessionId();
+bool        setRuntimeSerialNumber(const char* serialNumber);
+bool        setRuntimeSessionId(const char* sessionId);
+bool        setRuntimeEndpoint(const char* endpoint);
+void        clearProvisioning();
+void        printProvisioningStatus(Stream& out);
+bool        isProvisioningFromNvs();
+

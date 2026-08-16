@@ -22,11 +22,11 @@
 
 // --- Telemetry API ---
 #define API_HOST         "telemetry-api-functions.azurewebsites.net"
-#define UNIT_ID          2            // TelemetryHub ID in the database
+#define API_ENDPOINT     "/api/ingest/sensorlogger"
+#define SERIAL_NUMBER    "unit-2"
 
 // --- Device identity (sent in every payload) ---
 #define DEVICE_SESSION   "esp32-unit"
-#define DEVICE_ID        "unit-2"
 
 // --- Defaults (overridden by server config after first successful send) ---
 #define DEFAULT_INTERVAL_MS  60000UL  // 60 seconds

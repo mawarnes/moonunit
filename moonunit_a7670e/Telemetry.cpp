@@ -153,12 +153,23 @@ static bool readBatteryVoltageAdcV(double& voltageV) {
 #endif
 }
 
+static String buildApiUrl() {
+    const char* host = (strlen(cfg.apiHost) > 0) ? cfg.apiHost : API_HOST;
+    const char* endpoint = (strlen(cfg.endpoint) > 0) ? cfg.endpoint : API_ENDPOINT;
+
+    String path = String(endpoint);
+    if (!path.startsWith("/")) path = "/" + path;
+    while (path.length() > 1 && path.endsWith("/")) path.remove(path.length() - 1);
+
+    return "https://" + String(host) + path;
+}
+
 // Build the JSON payload string
 static String buildPayload() {
     JsonDocument doc;
     doc["messageId"] = msgCounter++;
-    doc["sessionId"] = DEVICE_SESSION;
-    doc["deviceId"]  = DEVICE_ID;
+    doc["sessionId"] = getRuntimeSessionId();
+    doc["serialNumber"] = getRuntimeSerialNumber();
     JsonArray payload = doc["payload"].to<JsonArray>();
 
     // Always include GNSS status so the device can check in even before a fix,
@@ -263,7 +274,7 @@ static String buildPayload() {
 
 static void sendViaGsm(const String& json) {
     // A7670E built-in HTTP client — handles TLS natively when URL starts with https://
-    String url = "https://" + String(API_HOST) + String(cfg.endpoint);
+    String url = buildApiUrl();
     Serial.printf("[gsm] POST %s\n", url.c_str());
     Serial.printf("[gsm] Body: %s\n", json.c_str());
 
@@ -341,7 +352,7 @@ static void sendViaWifi(const String& json) {
         }
     }
 
-    String url = "https://" + String(API_HOST) + String(cfg.endpoint);
+    String url = buildApiUrl();
     Serial.printf("[wifi] POST %s\n", url.c_str());
     Serial.printf("[wifi] Body: %s\n", json.c_str());
     WiFiClientSecure client;

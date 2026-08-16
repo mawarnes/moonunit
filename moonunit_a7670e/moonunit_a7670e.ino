@@ -25,6 +25,59 @@
 static unsigned long lastSend = 0;
 static bool          netReady = false;
 
+static void printProvisioningHelp() {
+    Serial.println("[prov] Commands:");
+    Serial.println("[prov]   prov show");
+    Serial.println("[prov]   prov set serial-number <text>");
+    Serial.println("[prov]   prov set session-id <text>");
+    Serial.println("[prov]   prov set endpoint </api/...>");
+    Serial.println("[prov]   prov clear");
+    Serial.println("[prov]   prov reboot");
+}
+
+static void handleProvisioningConsole() {
+    static String line;
+    while (Serial.available()) {
+        char c = (char)Serial.read();
+        if (c == '\r') continue;
+        if (c == '\n') {
+            line.trim();
+            if (line.length() > 0) {
+                if (line.equals("prov help")) {
+                    printProvisioningHelp();
+                } else if (line.equals("prov show")) {
+                    printProvisioningStatus(Serial);
+                } else if (line.startsWith("prov set serial-number ")) {
+                    String v = line.substring(strlen("prov set serial-number "));
+                    if (setRuntimeSerialNumber(v.c_str())) Serial.printf("[prov] serial-number set to %s\n", v.c_str());
+                    else Serial.println("[prov] invalid serial-number");
+                } else if (line.startsWith("prov set session-id ")) {
+                    String v = line.substring(strlen("prov set session-id "));
+                    if (setRuntimeSessionId(v.c_str())) Serial.printf("[prov] session-id set to %s\n", v.c_str());
+                    else Serial.println("[prov] invalid session-id");
+                } else if (line.startsWith("prov set endpoint ")) {
+                    String v = line.substring(strlen("prov set endpoint "));
+                    if (setRuntimeEndpoint(v.c_str())) Serial.printf("[prov] endpoint set to %s\n", v.c_str());
+                    else Serial.println("[prov] invalid endpoint");
+                } else if (line.equals("prov clear")) {
+                    clearProvisioning();
+                    Serial.println("[prov] provisioning cleared to firmware defaults");
+                } else if (line.equals("prov reboot")) {
+                    Serial.println("[prov] rebooting...");
+                    delay(100);
+                    ESP.restart();
+                } else if (line.startsWith("prov")) {
+                    Serial.println("[prov] unknown command");
+                    printProvisioningHelp();
+                }
+            }
+            line = "";
+            continue;
+        }
+        line += c;
+    }
+}
+
 void setup() {
     WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);  // LTE registration draws surge current — disable brownout
     Serial.begin(115200);
@@ -38,13 +91,13 @@ void setup() {
     digitalWrite(MODEM_RST,      HIGH);
 
     loadConfig();
+    loadProvisioning();
 
     Serial.println("\n========================================");
     Serial.println(" Metron View Telemetry Unit (A7670E)");
     Serial.println("========================================");
-    Serial.printf("Unit ID      : %d\n",    UNIT_ID);
-    Serial.printf("Device ID    : %s\n",    DEVICE_ID);
-    Serial.printf("Session      : %s\n",    DEVICE_SESSION);
+    Serial.printf("Serial Number: %s\n",    getRuntimeSerialNumber());
+    Serial.printf("Session      : %s\n",    getRuntimeSessionId());
     Serial.println("--- Network ---");
     Serial.printf("Connectivity : %s\n",    cfg.connectivityType);
     if (strcmp(cfg.connectivityType, "gsm") == 0)
@@ -52,7 +105,7 @@ void setup() {
     if (strcmp(cfg.connectivityType, "wifi") == 0)
         Serial.printf("WiFi SSID    : %s\n", cfg.wifiSsid);
     Serial.println("--- Telemetry ---");
-    Serial.printf("Endpoint     : %s\n",    cfg.endpoint);
+    Serial.printf("Endpoint Base: %s\n",    cfg.endpoint);
     Serial.printf("Interval     : %lu ms\n", cfg.intervalMs);
     Serial.println("--- Enabled Fields ---");
     for (int i = 0; i < CAP_COUNT; i++)
@@ -67,6 +120,8 @@ void setup() {
             Serial.printf("  Ch%d: disabled\n", i + 1);
     }
     Serial.println("========================================");
+    Serial.printf("[prov] ACTIVE source=%s\n", isProvisioningFromNvs() ? "nvs" : "defaults");
+    Serial.println("[prov] Type 'prov help' over USB serial for provisioning commands");
 
     if (strcmp(cfg.connectivityType, "gsm") == 0) {
         SerialAT.begin(115200, SERIAL_8N1, MODEM_RX, MODEM_TX);
@@ -93,6 +148,10 @@ void setup() {
 }
 
 void loop() {
+    if (!MODEM_TRAFFIC_DEBUG) {
+        handleProvisioningConsole();
+    }
+
     if (netReady && (millis() - lastSend >= cfg.intervalMs)) {
         pollGnss();
         Serial.printf("[gnss] Fix=%s Sats=%d Lat=%.6f Lon=%.6f\n",
